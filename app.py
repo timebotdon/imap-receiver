@@ -1,52 +1,26 @@
-import os
-import email
-from email.header import decode_header
+import mailparser
 import imaplib
-import html2text
 import json
+from pycti import OpenCTIApiClient
 
-# account credentials
+# OpenCTI connector credentials
+api_url = ''
+api_token = ''
+
+# Email credentials
 USER = ''
 PASS = ''
 
-""" 
-# output
-OUTPUT = "out"
 
-## TESTING only. save to local disk
-def writeToFile(filename, msgobject):
-  name = filename.replace(":", "-").strip()
-  print(name)
-  filename = name + ".json"
-  filepath = os.path.join("out", filename)
-  open(filepath, "w").write(msgobject)
- """
-
-def convertToJSON(msgsubject, msgdate, msgfrom, msgbody):
-  # a Python object (dict):
-  msgobject = {
-    "subject": msgsubject,
-    "date": msgdate,
-    "from": msgfrom,
-    #"to": msgto,
-    #"cc": msgcc,
-    #"bcc": msgbcc,
-    "body": msgbody
-  }
-  
-  y = json.dumps(msgobject)
-  #writeToFile(msgobject["subject"], msgobject)
-  #print(msgobject["subject"])
-
-  print(y)
+def importToOCTI(jsonData):
+  # OpenCTI API client initialization
+  opencti_api_client = OpenCTIApiClient(api_url, api_token)
+  # Import the bundle
+  opencti_api_client.stix2.import_bundle_from_json(jsonData, update=False)
 
 
-#if not isinstance(text, unicode):
-#  text = unicode(text, "utf-8")
-
-
-def getMessageText(msgObjects):
-  for i in range(messages, messages-3, -1):
+def getMessageText():
+  for i in range(1, total_messages+1, 1):
     #print("msg number:", i)
 
     # fetch the email message by ID
@@ -56,70 +30,29 @@ def getMessageText(msgObjects):
       ## If the response is a "tuple" datatype then..
       if isinstance(response, tuple):
         # parse a bytes email into a message object
-        msg = email.message_from_bytes(response[1])
-        #print(dir(msg))
+        mail = mailparser.parse_from_bytes(response[1])
+        msgObject = mail.message
+        #print(content_type)
 
-        msgdate = msg.get("Date")
-        msgfrom = msg.get("From")
-        msgsubject = decode_header(msg["Subject"])[0][0]
-
-        if isinstance(msgsubject, bytes):
-          msgsubject = msgsubject.decode()
-
-        # If message object is multipart
-        if msg.is_multipart():
-
+        if msgObject.is_multipart():
           # Walk through each part
-          for part in msg.walk():
-
+          for part in msgObject.walk():
             #Get content type
             content_type = part.get_content_type()
-            # print("Type:",content_type)
             content_disposition = str(part.get("Content-Disposition"))
-            try:
-              msgbody = part.get_payload(decode = True).decode()
-            except:
-              pass
-            
-            if content_type == "text/plain" and "attachment" not in content_disposition:
-              #msgbody = msgbody
-              pass  
-            
-        
-        else:
-          content_type = msg.get_content_type()
-          # print("Type:",content_type)
-          msgbody = msg.get_payload(decode=True).decode()
-          if content_type == "text/plain":
-            msgbody = msgbody
-            #print(body)
-            pass
-        
-        if content_type == "text/html":
-          # if it's HTML, create a new HTML file and open it in browser
-          h2t = html2text.HTML2Text()
-          
-          ## html2text OPTIONS
-          h2t.single_line_break = True
-          h2t.ignore_links = True
-          h2t.ignore_tables = True
-          h2t.ignore_images = True
-          h2t.ignore_anchors = True
-          
-          text = h2t.handle(msgbody)
-          msgbody = text
+            #print(content_disposition)
 
-          convertToJSON(msgsubject, msgdate, msgfrom, msgbody)
+            if content_type == "application/json":
+              try:
+                attachContent = part.get_payload(decode = True).decode()
+                #print(attachContent)
+                jsonData = json.loads(attachContent)
+                #print(jsonData)
+                importToOCTI(attachContent)
+                #importToOcti(attachContent) <----- send json data to OCTI here
+              except Exception as e:
+                print(e)
 
-    #finalData = [msgsubject, msgdate, msgfrom, msgbody]
-    #print(finalData)
-    #return finalData
-    #convertToJSON(finalData)
-
-""" 
-if not os.path.isdir(OUTPUT):
-  os.mkdir(OUTPUT)
- """
 
 # create an IMAP4 class with SSL 
 imap = imaplib.IMAP4_SSL("imap.gmail.com")
@@ -128,15 +61,14 @@ imap = imaplib.IMAP4_SSL("imap.gmail.com")
 imap.login(USER, PASS)
 
 # Select mail folder
-status, messages = imap.select("INBOX")
+status, messages = imap.select("test")
 
 # Get total number of emails
-messages = int(messages[0])
-
-print("Total Mails in INBOX:", messages)
+total_messages = int(messages[0])
+#print("Total Mails in INBOX:", total_messages)
 
 # get message content
-getMessageText(messages)
+getMessageText()
 
 imap.close()
 imap.logout()
